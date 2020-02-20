@@ -191,6 +191,8 @@ metropolis_hastings <- function(y, X
           # reject
           theta[,i] <- theta_last
         }
+
+        
       }
   }
   
@@ -198,7 +200,16 @@ metropolis_hastings <- function(y, X
 }
 
 
-
+function(y, X
+         log_target,
+         log_proposal,
+         draw_proposal,
+         niter = 100,
+         d,
+         beta0,
+         Sigma0, 
+         a0,
+         b0)
 
 
 

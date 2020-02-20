@@ -1,4 +1,4 @@
-FROM julia:1.4.0-buster
+FROM julia:1.4.0-rc1-buster
 
 RUN apt-get update && \
     apt-get upgrade -y && \
@@ -59,6 +59,9 @@ RUN julia -O3 -e 'using Pkg; Pkg.add("StaticArrays"); using StaticArrays'
 COPY startup.sh / 
 
 ENV PATH $PATH:/usr/games
+RUN mkdir /home/
+
+
 
 CMD ["/bin/sh", "startup.sh"]
 
