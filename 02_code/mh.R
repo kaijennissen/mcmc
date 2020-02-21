@@ -1,4 +1,6 @@
 # Metropolis Hastings -------------------------------------------------------------------------
+library(tibble)
+library(ggplot2)
 
 # helpers -----------------------------------------------------------------
 pdf_mvnorm <- function(x, mu, Sigma, P = NULL, d) {
@@ -44,9 +46,6 @@ draw_mvn <- function(mu, Sigma, d, P=NULL){
   return(x)
 }
 
-
-
-# metropolis hastings -----------------------------------------------------
 # Metropolis Hastings -------------------------------------------------------------------------
 metropolis_hastings <- function(target,
                                 proposal,
@@ -125,19 +124,20 @@ draw_proposal <- function(){
   return(x)
 }
 
-
 # sample
-resu <- metropolis_hastings(target, proposal, draw_proposal, niter=1000, d=2)
+resu <- metropolis_hastings(target, proposal, draw_proposal, niter=10000, d=2)
 
-plot.ts(cumsum(resu$alpha)/1:1000)
+# MCMC estimates
+rowMeans(resu$theta)
+var(t(resu$theta))
+
+mean(pmin(1, resu$alpha))
 
 plot(t(resu$theta))
 
 
-# plot bivariate mvn
-nsim <- 5000
-x <- matrix(0, nrow=2, ncol=nsim)
 
+# plot bivariate mvn
 e1 <- matrix(c(6 , 6))
 e2 <- matrix(c(0.5, -0.5))
 crossprod(e1, e2)
@@ -151,15 +151,25 @@ Sigma <- Q%*%Lambda%*%t(Q)
 
 # L <- matrix(c(1, -0.9, 0, -1), nrow = 2, ncol = 2)
 # Sigma <- tcrossprod(L)
-# Sigma
+# Sigma <- diag(2)
 # Sigma <- matrix(c(4.0, -9.6, -9.6, 64.0), nrow=2)
 mu <- matrix(c(0,0))
 
+nsim <- 20000
+x <- matrix(0, nrow=2, ncol=nsim)
 for (i in 1:nsim){
-  x[,i] <- draw_proposal(mu, Sigma, 2)
+  x[,i] <- draw_mvn(mu, Sigma, 2)
 }
 cov(t(x))
-plot(t(x))
 
 
+data <- tibble(x1 = x[1, ], x2=x[2, ])
 
+ggplot(data, aes(x=x1, y=x2))+
+  geom_bin2d()
+
+ggplot(data, aes(x=x1, y=x2))+
+  geom_density2d()
+
+ggplot(data, aes(x=x1, y=x2))+
+  geom_hex()

@@ -1,7 +1,9 @@
-# Random-Walk Metropolis Hastings ---------------------------------------------
+# Metropolis Hastings -------------------------------------------------------------------------
+library(tibble)
+library(ggplot2)
 
 # helpers -----------------------------------------------------------------
-pdf_mvnorm <- function(x, mu, Sigma, P = NULL, d) {
+log_pdf_mvnorm <- function(x, mu, Sigma, P = NULL, d) {
   eps <- .Machine$double.eps^.4
   if (is.null(P)) {
     tmp <- La.svd(Sigma)
@@ -11,12 +13,12 @@ pdf_mvnorm <- function(x, mu, Sigma, P = NULL, d) {
     sqrtP <- D.inv * tmp$vt
     sqrtP[abs(sqrtP) == Inf] <- 0
   }
-  K <- (2*pi)**-(d/2)
-  p <- det(Sigma)^-0.5  *exp(-0.5*crossprod(sqrtP %*% (x - mu)))
-  return(p*K)
+  K <- -(d/2)*log((2*pi))
+  p <- -0.5*log(det(Sigma))-0.5*crossprod(sqrtP %*% (x - mu))
+  return(p+K)
 }
 
-pdf_mvstudent <- function(x, nu, mu, Sigma, P = NULL, d) {
+log_pdf_mvstudent <- function(x, nu, mu, Sigma, P = NULL, d) {
   eps <- .Machine$double.eps^.4
   if (is.null(P)) {
     tmp <- La.svd(Sigma)
@@ -26,10 +28,10 @@ pdf_mvstudent <- function(x, nu, mu, Sigma, P = NULL, d) {
     sqrtP <- D.inv * tmp$vt
     sqrtP[abs(sqrtP) == Inf] <- 0
   }
-  K <- gamma(0.5*(nu+d))/(gamma(0.5*nu)*(nu*pi)**(0.5*d))
-  p <- det(Sigma)**-0.5*(1+nu**-1*crossprod(sqrtP %*% (x - mu)))**(-0.5*(nu+d))
-  return(p*K)
-}
+  K <- log(gamma(0.5*(nu+d)))-log(gamma(0.5*nu))+(0.5*d)*log((nu*pi))
+  p <- -0.5*log(det(Sigma))+(-0.5*(nu+d)*log(1+nu**-1*crossprod(sqrtP %*% (x - mu))))
+  return(p+K)
+  }
 
 draw_mvn <- function(mu, Sigma, d, P=NULL){
   eps <- .Machine$double.eps^.4
@@ -44,13 +46,10 @@ draw_mvn <- function(mu, Sigma, d, P=NULL){
   return(x)
 }
 
-
-
-# metropolis hastings -----------------------------------------------------
 # Metropolis Hastings -------------------------------------------------------------------------
-metropolis_hastings <- function(target,
+random_walk_metropolis_hastings <- function(target,
                                 proposal,
-                                draw_proposal,
+                                draw_mvn,
                                 niter,
                                 d) {
   theta <- matrix(NA, nrow = d, ncol = niter)
@@ -58,18 +57,16 @@ metropolis_hastings <- function(target,
   
   # 1.) draw initial value
   # 2.) repeat fot i in 1,...,niter
-  theta_last <- matrix(c(1,1), nrow=2)
+  theta_curr <- matrix(c(0.5, 0.5), nrow=2)
   
   for (i in 1:niter) {
     
     # a.) draw caindidate theta*
-    theta_cand <- draw_proposal()
+    theta_prop <- draw_mvn(mu = theta_curr, Sigma = 3*diag(2), d=2)
     
     # b.) calc alpha
-    log_alpha <- log(target(theta_cand)) +
-      log(proposal(theta_last)) -
-      log(target(theta_last)) -
-      log(proposal(theta_cand))
+    log_alpha <- log_target(x = theta_prop) -
+      log_target(x = theta_curr) -
     
     alpha[i] <- exp(log_alpha)
     
@@ -77,17 +74,17 @@ metropolis_hastings <- function(target,
     #browser()
     if (alpha[i] >= 1) {
       # accept draw
-      theta[, i] <- theta_cand
-      theta_last <- theta_cand
+      theta[, i] <- theta_prop
+      theta_curr <- theta_prop
     } else {
       if (alpha[i] > runif(1)) {
         # accept with prop alpha
-        theta[, i] <- theta_cand
-        theta_last <- theta_cand
+        theta[, i] <- theta_prop
+        theta_curr <- theta_prop
       }
       else {
         # reject
-        theta[, i] <- theta_last
+        theta[, i] <- theta_curr
       }
     }
   }
@@ -97,47 +94,40 @@ metropolis_hastings <- function(target,
 
 
 # target 
-target <-function(x){
-  p <- pdf_mvstudent(x,
-                     nu = 2,
-                     mu = matrix(c(0, 0)),
-                     Sigma = matrix(c(4.59, 3.88, 3.88, 4.59), nrow=2),
-                     d = 2)
+log_target <-function(x){
+  p <- log_pdf_mvstudent(x,
+              nu = 2,
+              mu = matrix(c(0, 0)),
+              Sigma = matrix(c(4.59, 3.88, 3.88, 4.59), nrow=2),
+              d = 2)
   return(p)
-}
+  }
 
 # proposal
-proposal <- function(x){
-  p <- pdf_mvnorm(x,
+log_proposal <- function(x){
+  p <- log_pdf_mvnorm(x,
                   mu = matrix(c(0, 0)),
-                  Sigma = diag(2),
+                  Sigma = 3*diag(2),
                   d = 2,
                   P=NULL)
   return(p)
-}
-
-# draw from proposal
-draw_proposal <- function(){
-  x <- draw_mvn(mu = matrix(c(0, 0)),
-                Sigma = diag(2),
-                d = 2,
-                P=NULL)
-  return(x)
-}
+  }
 
 
 # sample
-resu <- metropolis_hastings(target, proposal, draw_proposal, niter=1000, d=2)
+resu <- random_walk_metropolis_hastings(target, proposal, draw_mvn, niter=20000, d=2)
 
-plot.ts(cumsum(resu$alpha)/1:1000)
+# MCMC estimates
+rowMeans(resu$theta)
+var(t(resu$theta))
+
+mean(pmin(1, resu$alpha))
 
 plot(t(resu$theta))
 
 
-# plot bivariate mvn
-nsim <- 5000
-x <- matrix(0, nrow=2, ncol=nsim)
 
+# plot bivariate mvn
 e1 <- matrix(c(6 , 6))
 e2 <- matrix(c(0.5, -0.5))
 crossprod(e1, e2)
@@ -151,15 +141,46 @@ Sigma <- Q%*%Lambda%*%t(Q)
 
 # L <- matrix(c(1, -0.9, 0, -1), nrow = 2, ncol = 2)
 # Sigma <- tcrossprod(L)
-# Sigma
+# Sigma <- diag(2)
 # Sigma <- matrix(c(4.0, -9.6, -9.6, 64.0), nrow=2)
 mu <- matrix(c(0,0))
 
+nsim <- 20000
+x <- matrix(0, nrow=2, ncol=nsim)
 for (i in 1:nsim){
-  x[,i] <- draw_proposal(mu, Sigma, 2)
+  x[,i] <- draw_mvn(mu, Sigma, 2)
 }
 cov(t(x))
-plot(t(x))
 
 
+data <- tibble(x1 = x[1, ], x2=x[2, ])
 
+ggplot(data, aes(x=x1, y=x2))+
+  geom_bin2d()
+
+ggplot(data, aes(x=x1, y=x2))+
+  geom_density2d()
+
+ggplot(data, aes(x=x1, y=x2))+
+  geom_hex()
+
+# multivariate t
+
+mu <- c(7, 5)
+Sigma <- matrix(c(1, 1/2, 1/2, 1), 2)
+nu <- 2
+
+n <- 4e3 # Number of draws
+y <- matrix(0, nrow=10, ncol=2)
+for (i in 1:10){
+
+  mu <- matrix(0, nrow=2)
+  z <- sum(rnorm(2)^2)
+  y[i,] <- draw_mvn(mu, Sigma, d=2) * sqrt(nu / z) + mu
+  
+}
+       
+       
+       
+       
+       
