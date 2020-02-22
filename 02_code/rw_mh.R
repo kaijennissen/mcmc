@@ -66,7 +66,7 @@ random_walk_metropolis_hastings <- function(target,
     
     # b.) calc alpha
     log_alpha <- log_target(x = theta_prop) -
-      log_target(x = theta_curr) -
+      log_target(x = theta_curr) 
     
     alpha[i] <- exp(log_alpha)
     
@@ -96,7 +96,7 @@ random_walk_metropolis_hastings <- function(target,
 # target 
 log_target <-function(x){
   p <- log_pdf_mvstudent(x,
-              nu = 2,
+              nu = 12,
               mu = matrix(c(0, 0)),
               Sigma = matrix(c(4.59, 3.88, 3.88, 4.59), nrow=2),
               d = 2)
@@ -115,15 +115,20 @@ log_proposal <- function(x){
 
 
 # sample
-resu <- random_walk_metropolis_hastings(target, proposal, draw_mvn, niter=20000, d=2)
-
+resu <- random_walk_metropolis_hastings(target, proposal, draw_mvn, niter=3e5, d=2)
+nu <- 12
 # MCMC estimates
+# mean  = mu
+# var = nu/(nu-2)*Sigma
 rowMeans(resu$theta)
 var(t(resu$theta))
+nu/(nu-2)*Sigma
 
 mean(pmin(1, resu$alpha))
 
-plot(t(resu$theta))
+draw_mh <- tibble(dist = "rw_mh", x1 = resu$theta[1,], x2 = resu$theta[2,])
+
+
 
 
 
@@ -142,10 +147,10 @@ Sigma <- Q%*%Lambda%*%t(Q)
 # L <- matrix(c(1, -0.9, 0, -1), nrow = 2, ncol = 2)
 # Sigma <- tcrossprod(L)
 # Sigma <- diag(2)
-# Sigma <- matrix(c(4.0, -9.6, -9.6, 64.0), nrow=2)
+# Sigma <-matrix(c(4.59, 3.88, 3.88, 4.59), nrow=2)# matrix(c(4.0, -9.6, -9.6, 64.0), nrow=2)
 mu <- matrix(c(0,0))
 
-nsim <- 20000
+nsim <- 1e6
 x <- matrix(0, nrow=2, ncol=nsim)
 for (i in 1:nsim){
   x[,i] <- draw_mvn(mu, Sigma, 2)
@@ -153,34 +158,50 @@ for (i in 1:nsim){
 cov(t(x))
 
 
-data <- tibble(x1 = x[1, ], x2=x[2, ])
+data_norm <- tibble(dist = "norm", x1 = x[1, ], x2=x[2, ])
 
-ggplot(data, aes(x=x1, y=x2))+
-  geom_bin2d()
-
-ggplot(data, aes(x=x1, y=x2))+
-  geom_density2d()
-
-ggplot(data, aes(x=x1, y=x2))+
-  geom_hex()
+# ggplot(data_norm, aes(x=x1, y=x2))+
+#   geom_bin2d()
+# 
+# ggplot(data_norm, aes(x=x1, y=x2))+
+#   geom_density2d()
+# 
+# ggplot(data_norm, aes(x=x1, y=x2))+
+#   geom_hex()
 
 # multivariate t
-
-mu <- c(7, 5)
-Sigma <- matrix(c(1, 1/2, 1/2, 1), 2)
-nu <- 2
-
-n <- 4e3 # Number of draws
-y <- matrix(0, nrow=10, ncol=2)
-for (i in 1:10){
-
-  mu <- matrix(0, nrow=2)
-  z <- sum(rnorm(2)^2)
-  y[i,] <- draw_mvn(mu, Sigma, d=2) * sqrt(nu / z) + mu
-  
+draw_mvt <- function(n, nu, mu, Sigma){
+  d = dim(mu)[1]
+  x <- matrix(0, nrow=2, ncol=n )
+  for (i in 1:n){
+    z <- sum(rnorm(nu)^2)
+    x[,i] <- draw_mvn(mu, Sigma, d=2) * sqrt(nu / z) + mu
+    
+  }
+  return(t(x))
 }
-       
-       
-       
-       
-       
+
+Sigma <- matrix(c(4.59, 3.88, 3.88, 4.59), nrow=2)
+x <- draw_mvt(1e5, 12, matrix(0, 2), Sigma)
+
+data_t <- tibble(dist = "t", x1 = x[,1], x2=x[,2])   
+
+# ggplot(data_t, aes(x=x1, y=x2))+
+#   geom_bin2d()   
+# 
+# ggplot(data_t, aes(x=x1, y=x2))+
+#   geom_density2d()
+# 
+# ggplot(data_t, aes(x=x1, y=x2))+
+#   geom_hex()
+
+
+data <- dplyr::bind_rows(draw_mh, data_t)
+
+ggplot(data[abs(data$x1)<12 & abs(data$x2)<12, ], aes(x=x1, y=x2))+
+  geom_hex()+
+  facet_wrap(~dist)
+
+
+
+   
